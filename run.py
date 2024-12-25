@@ -7,15 +7,24 @@ import logging
 # Initialize logging
 logging.basicConfig(level=logging.DEBUG)
 
-# Load the pre-trained model
+# Load models dynamically
 try:
-    model = load_models()
+    models = load_models('models')  # Ensure the 'models' folder has the appropriate `.h5` files
+    logging.info(f"Available models: {list(models.keys())}")
 except Exception as e:
-    logging.critical(f"Failed to load model: {e}")
+    logging.critical(f"Failed to load models: {e}")
     raise
 
 # Define class labels
 CLASS_LABELS = ['Cat', 'Dog']  # Update as per your actual class labels
+
+# Define input sizes for each model
+MODEL_INPUT_SIZES = {
+    "cnn": (64, 64),
+    "mobilenet": (224, 224),
+    "resnet": (224, 224)
+}
+
 
 def create_app():
     app = Flask(__name__)
@@ -24,6 +33,16 @@ def create_app():
     # Prediction route
     @app.route('/predict', methods=['POST'])
     def predict():
+        # Validate the model parameter
+        model_type = request.form.get('model', 'cnn')  # Default to 'cnn'
+        if model_type not in models:
+            logging.warning(f"Invalid model specified: {model_type}")
+            return jsonify({"success": False, "error": f"Invalid model specified: {model_type}"}), 400
+
+        # Select the model
+        model = models[model_type]
+
+        # Validate the image file
         if 'image' not in request.files:
             logging.warning("No image provided in request")
             return jsonify({"success": False, "error": "No image provided"}), 400
@@ -34,9 +53,10 @@ def create_app():
             return jsonify({"success": False, "error": "No file selected"}), 400
 
         try:
-            # Preprocess the uploaded image
-            img_array = preprocess_image(file)
-            logging.debug(f"Image preprocessed successfully, shape: {img_array.shape}")
+            # Preprocess the uploaded image with the correct target size
+            target_size = MODEL_INPUT_SIZES[model_type]
+            img_array = preprocess_image(file, target_size=target_size)
+            logging.debug(f"Image preprocessed successfully for model {model_type}, shape: {img_array.shape}")
 
             # Perform prediction
             predictions = model.predict(img_array)
